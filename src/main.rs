@@ -1,11 +1,18 @@
+use std::f64::INFINITY;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 
-use crate::vec3::Vec3;
-use crate::ray::Ray;
+use hittable::Hittable;
 
-pub mod vec3;
+use crate::hittable::HittableList;
+use crate::ray::Ray;
+use crate::sphere::Sphere;
+use crate::vec3::Vec3;
+
 pub mod ray;
+pub mod vec3;
+pub mod hittable;
+pub mod sphere;
 
 fn write_color(f: &mut BufWriter<File>, color: Vec3) {
     let r = (255.99 * color.x()) as i32;
@@ -15,32 +22,46 @@ fn write_color(f: &mut BufWriter<File>, color: Vec3) {
     write!(f, "{r} {g} {b}\n").expect("Can't write to file");
 }
 
-fn hit_sphere(center: Vec3, radius: f64, ray: &Ray) -> bool {
-    let offset = ray.origin() - center;
+// fn hit_sphere(center: Vec3, radius: f64, ray: &Ray) -> f64 {
+//     let offset = ray.origin() - center;
 
-    let a = Vec3::dot(ray.dir(), ray.dir());
-    let b = 2.0 * Vec3::dot(ray.dir(), offset);
-    let c = Vec3::dot(offset, offset) - radius * radius;
+//     let a = ray.dir().length_squared();
+//     let half_b = Vec3::dot(ray.dir(), offset);
+//     let c = offset.length_squared() - radius * radius;
 
-    let discriminant = b * b - 4.0 * a * c;
-    discriminant > 0.0
-}
+//     let discriminant = half_b * half_b - a * c;
 
-fn ray_color(ray: &Ray) -> Vec3 {
-    if hit_sphere(Vec3::new(0.0, 0.0, -1.0), 0.5, &ray) {
-        return Vec3::new(1.0, 0.0, 0.0)
-    }
+//     if discriminant < 0.0 {
+//         -1.0
+//     } else {
+//         (-half_b - discriminant.sqrt()) / a
+//     }
+// }
 
-    let unit_dir = ray.dir().unit_vector();
-    let t = 0.5 * (unit_dir.y() + 1.0);
+fn ray_color(ray: &Ray, world: &impl Hittable) -> Vec3 {
+    let record = world.hit(ray, 0.0, INFINITY);
 
-    (1.0 - t) * Vec3::new(1.0, 1.0, 1.0) + t * Vec3::new(0.5, 0.7, 1.0)
+    match record {
+        hittable::HitRecord::Hit { point: _, t: _, normal, front_face: _ } => {
+            0.5 * (normal + Vec3::new(1.0, 1.0, 1.0))
+        },
+        hittable::HitRecord::Miss => {
+            let unit_dir = ray.dir().unit_vector();
+            let t = 0.5 * (unit_dir.y() + 1.0);
+
+            (1.0 - t) * Vec3::new(1.0, 1.0, 1.0) + t * Vec3::new(0.5, 0.7, 1.0)
+        },
+    }    
 }
 
 fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
     const IMAGE_WIDTH: i32 = 600;
     const IMAGE_HEIGHT: i32 = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as i32;
+
+    let mut world = HittableList::new();
+    world.add(Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5));
+    world.add(Sphere::new(Vec3::new(0.0, -100.5, 0.0), 100.0));
 
     let viewport_height = 2.0;
     let viewport_width = ASPECT_RATIO * viewport_height;
@@ -49,7 +70,8 @@ fn main() {
     let origin = Vec3::new(0.0, 0.0, 0.0);
     let horizontal = Vec3::new(viewport_width, 0.0, 0.0);
     let vertical = Vec3::new(0.0, viewport_height, 0.0);
-    let lower_left_corner = origin - horizontal / 2.0 - vertical / 2.0 - Vec3::new(0.0, 0.0, focal_length);
+    let lower_left_corner =
+        origin - horizontal / 2.0 - vertical / 2.0 - Vec3::new(0.0, 0.0, focal_length);
 
     let image = File::create("image.ppm").expect("Unable to create file!");
     let mut image = BufWriter::new(image);
@@ -61,9 +83,12 @@ fn main() {
         for i in 0..IMAGE_WIDTH {
             let u = i as f64 / (IMAGE_WIDTH - 1) as f64;
             let v = j as f64 / (IMAGE_HEIGHT - 1) as f64;
-            
-            let ray = Ray::new(origin, lower_left_corner + u * horizontal + v * vertical - origin);
-            let color = ray_color(&ray);
+
+            let ray = Ray::new(
+                origin,
+                lower_left_corner + u * horizontal + v * vertical - origin,
+            );
+            let color = ray_color(&ray, &world);
             write_color(&mut image, color);
         }
     }
