@@ -1,13 +1,14 @@
-use crate::{ray::Ray, vec3::Vec3};
+use crate::{material::Material, ray::Ray, vec3::Vec3};
 
-pub enum HitRecord {
-    Hit{
+pub enum HitRecord<'a> {
+    Hit {
         point: Vec3,
         t: f64,
         normal: Vec3,
         front_face: bool,
+        material: &'a Box<dyn Material>,
     },
-    Miss
+    Miss,
 }
 
 pub trait Hittable {
@@ -15,7 +16,7 @@ pub trait Hittable {
 }
 
 pub struct HittableList {
-    list: Vec<Box<dyn Hittable>>
+    list: Vec<Box<dyn Hittable>>,
 }
 
 impl HittableList {
@@ -41,10 +42,16 @@ impl Hittable for HittableList {
             let record = obj.hit(ray, t_min, closest_so_far);
 
             match record {
-                HitRecord::Hit { point: _, t, normal: _, front_face: _ } => {
+                HitRecord::Hit {
+                    point: _,
+                    t,
+                    normal: _,
+                    front_face: _,
+                    material: _,
+                } => {
                     rec = record;
                     closest_so_far = t;
-                },
+                }
                 HitRecord::Miss => (),
             }
         }

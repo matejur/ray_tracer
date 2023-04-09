@@ -1,13 +1,18 @@
-use crate::{vec3::Vec3, hittable::*, ray::Ray};
+use crate::{hittable::*, material::Material, ray::Ray, vec3::Vec3};
 
 pub struct Sphere {
     center: Vec3,
     radius: f64,
+    material: Box<dyn Material>,
 }
 
 impl Sphere {
-    pub fn new(center: Vec3, radius: f64) -> Self {
-        Self { center, radius }
+    pub fn new(center: Vec3, radius: f64, material: impl Material + 'static) -> Self {
+        Self {
+            center,
+            radius,
+            material: Box::new(material),
+        }
     }
 }
 
@@ -38,9 +43,16 @@ impl Hittable for Sphere {
         let point = ray.at(root);
         let normal = (point - self.center) / self.radius;
         let front_face = Vec3::dot(ray.dir(), normal) < 0.0;
+        let material = &self.material;
 
-        let normal = if front_face { normal } else { - normal };
-        
-        HitRecord::Hit { point, normal, t: root, front_face }
+        let normal = if front_face { normal } else { -normal };
+
+        HitRecord::Hit {
+            point,
+            normal,
+            t: root,
+            front_face,
+            material,
+        }
     }
 }

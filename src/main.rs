@@ -2,76 +2,97 @@ use std::f64::INFINITY;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 
+use camera::Camera;
 use hittable::Hittable;
+use hittable::HittableList;
+use material::Lambertian;
+use ray::Ray;
+use sphere::Sphere;
+use utility::clamp;
+use utility::random;
+use vec3::Vec3;
 
-use crate::hittable::HittableList;
-use crate::ray::Ray;
-use crate::sphere::Sphere;
-use crate::vec3::Vec3;
+use crate::material::Metal;
 
-pub mod ray;
-pub mod vec3;
-pub mod hittable;
-pub mod sphere;
+mod camera;
+mod hittable;
+mod material;
+mod ray;
+mod sphere;
+mod utility;
+mod vec3;
 
-fn write_color(f: &mut BufWriter<File>, color: Vec3) {
-    let r = (255.99 * color.x()) as i32;
-    let g = (255.99 * color.y()) as i32;
-    let b = (255.99 * color.z()) as i32;
+fn write_color(f: &mut BufWriter<File>, color: Vec3, samples: i32) {
+    let r = color.x() / samples as f64;
+    let g = color.y() / samples as f64;
+    let b = color.z() / samples as f64;
+
+    let r = (256.0 * clamp(r.sqrt(), 0.0, 0.999)) as i32;
+    let g = (256.0 * clamp(g.sqrt(), 0.0, 0.999)) as i32;
+    let b = (256.0 * clamp(b.sqrt(), 0.0, 0.999)) as i32;
 
     write!(f, "{r} {g} {b}\n").expect("Can't write to file");
 }
 
-// fn hit_sphere(center: Vec3, radius: f64, ray: &Ray) -> f64 {
-//     let offset = ray.origin() - center;
+fn ray_color(ray: &Ray, world: &impl Hittable, depth: i32) -> Vec3 {
+    let record = world.hit(ray, 0.001, INFINITY);
 
-//     let a = ray.dir().length_squared();
-//     let half_b = Vec3::dot(ray.dir(), offset);
-//     let c = offset.length_squared() - radius * radius;
-
-//     let discriminant = half_b * half_b - a * c;
-
-//     if discriminant < 0.0 {
-//         -1.0
-//     } else {
-//         (-half_b - discriminant.sqrt()) / a
-//     }
-// }
-
-fn ray_color(ray: &Ray, world: &impl Hittable) -> Vec3 {
-    let record = world.hit(ray, 0.0, INFINITY);
+    if depth < 0 {
+        return Vec3::new(0.0, 0.0, 0.0);
+    }
 
     match record {
-        hittable::HitRecord::Hit { point: _, t: _, normal, front_face: _ } => {
-            0.5 * (normal + Vec3::new(1.0, 1.0, 1.0))
-        },
+        hittable::HitRecord::Hit {
+            point,
+            t: _,
+            normal,
+            front_face: _,
+            material,
+        } => {
+            let scattered = material.scatter(ray, &record);
+
+            match scattered {
+                material::MaterialData::Scatter {
+                    attenuation,
+                    scattered,
+                } => {
+                    return attenuation * ray_color(&scattered, world, depth - 1);
+                }
+                material::MaterialData::Not => return Vec3::new(0.0, 0.0, 0.0),
+            }
+        }
         hittable::HitRecord::Miss => {
             let unit_dir = ray.dir().unit_vector();
             let t = 0.5 * (unit_dir.y() + 1.0);
 
             (1.0 - t) * Vec3::new(1.0, 1.0, 1.0) + t * Vec3::new(0.5, 0.7, 1.0)
-        },
-    }    
+        }
+    }
 }
 
 fn main() {
     const ASPECT_RATIO: f64 = 16.0 / 9.0;
     const IMAGE_WIDTH: i32 = 600;
     const IMAGE_HEIGHT: i32 = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as i32;
+    const SAMPLES_PER_PIXEL: i32 = 100;
+    const MAX_DEPTH: i32 = 20;
 
     let mut world = HittableList::new();
-    world.add(Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5));
-    world.add(Sphere::new(Vec3::new(0.0, -100.5, 0.0), 100.0));
+    let material_ground = Lambertian::new(Vec3::new(0.8, 0.8, 0.0));
+    let material_center = Lambertian::new(Vec3::new(0.7, 0.3, 0.3));
+    let material_left = Metal::new(Vec3::new(0.8, 0.8, 0.8));
+    let material_right = Metal::new(Vec3::new(0.8, 0.6, 0.2));
 
-    let viewport_height = 2.0;
-    let viewport_width = ASPECT_RATIO * viewport_height;
-    let focal_length = 1.0;
+    world.add(Sphere::new(
+        Vec3::new(0.0, -100.5, 0.0),
+        100.0,
+        material_ground,
+    ));
+    world.add(Sphere::new(Vec3::new(0.0, 0.0, -1.0), 0.5, material_center));
+    world.add(Sphere::new(Vec3::new(-1.0, 0.0, -1.0), 0.5, material_left));
+    world.add(Sphere::new(Vec3::new(1.0, 0.0, -1.0), 0.5, material_right));
 
-    let origin = Vec3::new(0.0, 0.0, 0.0);
-    let horizontal = Vec3::new(viewport_width, 0.0, 0.0);
-    let vertical = Vec3::new(0.0, viewport_height, 0.0);
-    let lower_left_corner =
-        origin - horizontal / 2.0 - vertical / 2.0 - Vec3::new(0.0, 0.0, focal_length);
+    let camera = Camera::new();
 
     let image = File::create("image.ppm").expect("Unable to create file!");
     let mut image = BufWriter::new(image);
@@ -81,15 +102,15 @@ fn main() {
     for j in (0..IMAGE_HEIGHT).rev() {
         println!("Scanlines remaining: {j}");
         for i in 0..IMAGE_WIDTH {
-            let u = i as f64 / (IMAGE_WIDTH - 1) as f64;
-            let v = j as f64 / (IMAGE_HEIGHT - 1) as f64;
+            let mut color = Vec3::new(0.0, 0.0, 0.0);
+            for _ in 0..SAMPLES_PER_PIXEL {
+                let u = (i as f64 + random()) / (IMAGE_WIDTH - 1) as f64;
+                let v = (j as f64 + random()) / (IMAGE_HEIGHT - 1) as f64;
+                let ray = camera.get_ray(u, v);
+                color += ray_color(&ray, &world, MAX_DEPTH);
+            }
 
-            let ray = Ray::new(
-                origin,
-                lower_left_corner + u * horizontal + v * vertical - origin,
-            );
-            let color = ray_color(&ray, &world);
-            write_color(&mut image, color);
+            write_color(&mut image, color, SAMPLES_PER_PIXEL);
         }
     }
     println!("Done");

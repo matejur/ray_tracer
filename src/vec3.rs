@@ -1,5 +1,7 @@
 use std::ops;
 
+use crate::utility::{random, random_range};
+
 #[derive(Debug, Clone, Copy)]
 pub struct Vec3 {
     e: [f64; 3],
@@ -44,6 +46,41 @@ impl Vec3 {
 
     pub fn length_squared(self) -> f64 {
         self[0] * self[0] + self[1] * self[1] + self[2] * self[2]
+    }
+
+    pub fn random() -> Self {
+        Vec3::new(random(), random(), random())
+    }
+
+    pub fn random_range(min: f64, max: f64) -> Self {
+        Vec3::new(
+            random_range(min, max),
+            random_range(min, max),
+            random_range(min, max),
+        )
+    }
+
+    pub fn random_in_unit_sphere() -> Self {
+        loop {
+            let v = Self::random_range(-1.0, 1.0);
+            if v.length_squared() < 1.0 {
+                return v;
+            }
+        }
+    }
+
+    pub fn random_unit_vector() -> Self {
+        Self::random_in_unit_sphere().unit_vector()
+    }
+
+    pub fn near_zero(self) -> bool {
+        let s = 1e-8;
+
+        (self[0].abs() < s) && (self[1].abs() < s) && (self[2].abs() < s) 
+    }
+
+    pub fn reflect(v: Vec3, n: Vec3) -> Self {
+        return v - 2.0 * Self::dot(v, n) * n;
     }
 }
 
@@ -129,6 +166,14 @@ impl ops::Mul<Vec3> for f64 {
 
     fn mul(self, t: Vec3) -> Vec3 {
         t * self
+    }
+}
+
+impl ops::Mul for Vec3 {
+    type Output = Vec3;
+
+    fn mul(self, o: Vec3) -> Vec3 {
+        Vec3::new(self[0] * o[0], self[1] * o[1], self[2] * o[2])
     }
 }
 
