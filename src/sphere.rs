@@ -1,22 +1,22 @@
 use crate::{hittable::*, material::Material, ray::Ray, vec3::Vec3};
 
-pub struct Sphere {
+pub struct Sphere<'a> {
     center: Vec3,
     radius: f64,
-    material: Box<dyn Material>,
+    material: &'a dyn Material,
 }
 
-impl Sphere {
-    pub fn new(center: Vec3, radius: f64, material: impl Material + 'static) -> Self {
-        Self {
+impl<'a> Sphere<'a> {
+    pub fn new(center: Vec3, radius: f64, material: &'a impl Material) -> Sphere {
+        Sphere {
             center,
             radius,
-            material: Box::new(material),
+            material,
         }
     }
 }
 
-impl Hittable for Sphere {
+impl<'a> Hittable for Sphere<'a> {
     fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> HitRecord {
         let offset = ray.origin() - self.center;
 
@@ -43,7 +43,7 @@ impl Hittable for Sphere {
         let point = ray.at(root);
         let normal = (point - self.center) / self.radius;
         let front_face = Vec3::dot(ray.dir(), normal) < 0.0;
-        let material = &self.material;
+        let material = self.material;
 
         let normal = if front_face { normal } else { -normal };
 

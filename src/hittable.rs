@@ -6,7 +6,7 @@ pub enum HitRecord<'a> {
         t: f64,
         normal: Vec3,
         front_face: bool,
-        material: &'a Box<dyn Material>,
+        material: &'a dyn Material,
     },
     Miss,
 }
@@ -15,17 +15,17 @@ pub trait Hittable {
     fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> HitRecord;
 }
 
-pub struct HittableList {
-    list: Vec<Box<dyn Hittable>>,
+pub struct HittableList<'a> {
+    list: Vec<&'a dyn Hittable>,
 }
 
-impl HittableList {
+impl<'a> HittableList<'a> {
     pub fn new() -> Self {
         HittableList { list: Vec::new() }
     }
 
-    pub fn add(&mut self, obj: impl Hittable + 'static) {
-        self.list.push(Box::new(obj));
+    pub fn add(&mut self, obj: &'a impl Hittable) {
+        self.list.push(obj);
     }
 
     pub fn clear(&mut self) {
@@ -33,7 +33,7 @@ impl HittableList {
     }
 }
 
-impl Hittable for HittableList {
+impl<'a> Hittable for HittableList<'a> {
     fn hit(&self, ray: &Ray, t_min: f64, t_max: f64) -> HitRecord {
         let mut closest_so_far = t_max;
         let mut rec = HitRecord::Miss;
